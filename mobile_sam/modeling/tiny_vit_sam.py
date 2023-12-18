@@ -12,9 +12,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath as TimmDropPath,\
-    to_2tuple, trunc_normal_
-from timm.models.registry import register_model
+#from timm.models.layers import DropPath as TimmDropPath,\
+#    to_2tuple, trunc_normal_
+#from timm.models.registry import register_model
 from typing import Tuple
 
 
@@ -43,21 +43,24 @@ class Conv2d_BN(torch.nn.Sequential):
         return m
 
 
-class DropPath(TimmDropPath):
-    def __init__(self, drop_prob=None):
-        super().__init__(drop_prob=drop_prob)
-        self.drop_prob = drop_prob
-
-    def __repr__(self):
-        msg = super().__repr__()
-        msg += f'(drop_prob={self.drop_prob})'
-        return msg
+#class DropPath(TimmDropPath):
+#    def __init__(self, drop_prob=None):
+#        super().__init__(drop_prob=drop_prob)
+#        self.drop_prob = drop_prob
+#
+#    def __repr__(self):
+#        msg = super().__repr__()
+#        msg += f'(drop_prob={self.drop_prob})'
+#        return msg
 
 
 class PatchEmbed(nn.Module):
     def __init__(self, in_chans, embed_dim, resolution, activation):
         super().__init__()
-        img_size: Tuple[int, int] = to_2tuple(resolution)
+        #print(resolution)
+        #img_size: Tuple[int, int] = to_2tuple(resolution)
+        #print(img_size)
+        img_size = (resolution,resolution)
         self.patches_resolution = (img_size[0] // 4, img_size[1] // 4)
         self.num_patches = self.patches_resolution[0] * \
             self.patches_resolution[1]
@@ -93,8 +96,8 @@ class MBConv(nn.Module):
             self.hidden_chans, out_chans, ks=1, bn_weight_init=0.0)
         self.act3 = activation()
 
-        self.drop_path = DropPath(
-            drop_path) if drop_path > 0. else nn.Identity()
+        #self.drop_path = DropPath(
+        #    drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
         shortcut = x
@@ -107,7 +110,7 @@ class MBConv(nn.Module):
 
         x = self.conv3(x)
 
-        x = self.drop_path(x)
+        #x = self.drop_path(x)
 
         x += shortcut
         x = self.act3(x)
@@ -253,7 +256,9 @@ class Attention(torch.nn.Module):
         if mode and hasattr(self, 'ab'):
             del self.ab
         else:
-            self.ab = self.attention_biases[:, self.attention_bias_idxs]
+            self.register_buffer('ab',
+                                 self.attention_biases[:, self.attention_bias_idxs],
+                                 persistent=False)
 
     def forward(self, x):  # x (B,N,C)
         B, N, _ = x.shape
@@ -287,7 +292,7 @@ class TinyViTBlock(nn.Module):
 
     Args:
         dim (int): Number of input channels.
-        input_resolution (tuple[int, int]): Input resulotion.
+        input_resolution (tuple[int, int]): Input resolution.
         num_heads (int): Number of attention heads.
         window_size (int): Window size.
         mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
@@ -311,8 +316,8 @@ class TinyViTBlock(nn.Module):
         self.window_size = window_size
         self.mlp_ratio = mlp_ratio
 
-        self.drop_path = DropPath(
-            drop_path) if drop_path > 0. else nn.Identity()
+        #self.drop_path = DropPath(
+        #    drop_path) if drop_path > 0. else nn.Identity()
 
         assert dim % num_heads == 0, 'dim must be divisible by num_heads'
         head_dim = dim // num_heads
@@ -364,13 +369,13 @@ class TinyViTBlock(nn.Module):
 
             x = x.view(B, L, C)
 
-        x = res_x + self.drop_path(x)
+        x = res_x #+ self.drop_path(x)
 
         x = x.transpose(1, 2).reshape(B, C, H, W)
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path(self.mlp(x))
+        x = x #+ self.drop_path(self.mlp(x))
         return x
 
     def extra_repr(self) -> str:
@@ -554,7 +559,7 @@ class TinyViT(nn.Module):
         # layers -> blocks (depth)
         depth = sum(self.depths)
         lr_scales = [decay_rate ** (depth - i - 1) for i in range(depth)]
-        print("LR SCALES:", lr_scales)
+        #print("LR SCALES:", lr_scales)
 
         def _set_lr_scale(m, scale):
             for p in m.parameters():
@@ -584,7 +589,7 @@ class TinyViT(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            #trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -629,32 +634,32 @@ _provided_checkpoints = {
 }
 
 
-def register_tiny_vit_model(fn):
-    '''Register a TinyViT model
-    It is a wrapper of `register_model` with loading the pretrained checkpoint.
-    '''
-    def fn_wrapper(pretrained=False, **kwargs):
-        model = fn()
-        if pretrained:
-            model_name = fn.__name__
-            assert model_name in _provided_checkpoints, \
-                f'Sorry that the checkpoint `{model_name}` is not provided yet.'
-            url = _checkpoint_url_format.format(
-                _provided_checkpoints[model_name])
-            checkpoint = torch.hub.load_state_dict_from_url(
-                url=url,
-                map_location='cpu', check_hash=False,
-            )
-            model.load_state_dict(checkpoint['model'])
+#def register_tiny_vit_model(fn):
+#    '''Register a TinyViT model
+#    It is a wrapper of `register_model` with loading the pretrained checkpoint.
+#    '''
+#    def fn_wrapper(pretrained=False, **kwargs):
+#        model = fn()
+#        if pretrained:
+#            model_name = fn.__name__
+#            assert model_name in _provided_checkpoints, \
+#                f'Sorry that the checkpoint `{model_name}` is not provided yet.'
+#            url = _checkpoint_url_format.format(
+#                _provided_checkpoints[model_name])
+#            checkpoint = torch.hub.load_state_dict_from_url(
+#                url=url,
+#                map_location='cpu', check_hash=False,
+#            )
+#            model.load_state_dict(checkpoint['model'])
+#
+#        return model
+#
+#    # rename the name of fn_wrapper
+#    fn_wrapper.__name__ = fn.__name__
+#    return register_model(fn_wrapper)
 
-        return model
 
-    # rename the name of fn_wrapper
-    fn_wrapper.__name__ = fn.__name__
-    return register_model(fn_wrapper)
-
-
-@register_tiny_vit_model
+#@register_tiny_vit_model
 def tiny_vit_5m_224(pretrained=False, num_classes=1000, drop_path_rate=0.0):
     return TinyViT(
         num_classes=num_classes,
@@ -666,7 +671,7 @@ def tiny_vit_5m_224(pretrained=False, num_classes=1000, drop_path_rate=0.0):
     )
 
 
-@register_tiny_vit_model
+#@register_tiny_vit_model
 def tiny_vit_11m_224(pretrained=False, num_classes=1000, drop_path_rate=0.1):
     return TinyViT(
         num_classes=num_classes,
@@ -678,7 +683,7 @@ def tiny_vit_11m_224(pretrained=False, num_classes=1000, drop_path_rate=0.1):
     )
 
 
-@register_tiny_vit_model
+#@register_tiny_vit_model
 def tiny_vit_21m_224(pretrained=False, num_classes=1000, drop_path_rate=0.2):
     return TinyViT(
         num_classes=num_classes,
@@ -690,7 +695,7 @@ def tiny_vit_21m_224(pretrained=False, num_classes=1000, drop_path_rate=0.2):
     )
 
 
-@register_tiny_vit_model
+#@register_tiny_vit_model
 def tiny_vit_21m_384(pretrained=False, num_classes=1000, drop_path_rate=0.1):
     return TinyViT(
         img_size=384,
@@ -703,7 +708,7 @@ def tiny_vit_21m_384(pretrained=False, num_classes=1000, drop_path_rate=0.1):
     )
 
 
-@register_tiny_vit_model
+#@register_tiny_vit_model
 def tiny_vit_21m_512(pretrained=False, num_classes=1000, drop_path_rate=0.1):
     return TinyViT(
         img_size=512,
